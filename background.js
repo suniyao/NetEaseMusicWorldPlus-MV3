@@ -1,39 +1,45 @@
-let mode
+const defaultMode = 2
 const title = ['closed', 'normal', 'enhanced']
-const icon = ['images/grey.svg', 'images/red.svg', 'images/blue.svg']
+const icon = ['images/grey16.png', 'images/red16.png', 'images/blue16.png']
 
-chrome.webRequest.onBeforeSendHeaders.addListener(
-	details => {
-		const { url, requestHeaders } = details
-		if (url.includes('music.163.com')) {
-			if (mode > 0) requestHeaders.push({
-				name: 'X-Real-IP',
-				value: '211.161.244.70'
-			})
-		} else if (url.includes('music.126.net')) {
-			if (/m\d+c/.test(url)) requestHeaders.push({
-				name: 'Cache-Control',
-				value: 'no-cache'
-			})
-		}
-		return { requestHeaders }
-	},
-	{ urls: ['*://music.163.com/*', '*://*.music.126.net/*'] },
-	['blocking', 'requestHeaders']
-)
-
-const sync = () => {
-	chrome.storage.local.set({ mode })
-	chrome.browserAction.setIcon({ path: icon[mode] })
-	chrome.browserAction.setTitle({ title: `${chrome.i18n.getMessage('name')} [${chrome.i18n.getMessage(title[mode])}]` })
+const getMode = async () => {
+	const { mode } = await chrome.storage.local.get('mode')
+	return Number.isInteger(mode) && mode >= 0 && mode < title.length ? mode : defaultMode
 }
 
-chrome.browserAction.onClicked.addListener(() => {
-	mode = (mode + 1) % 3
-	sync()
+const updateRules = async mode => {
+	const rules = await (await fetch(chrome.runtime.getURL('rules.json'))).json()
+	await chrome.declarativeNetRequest.updateDynamicRules({
+		removeRuleIds: rules.map(rule => rule.id),
+		addRules: mode > 0 ? rules : []
+	})
+}
+
+const sync = async mode => {
+	await updateRules(mode)
+	await Promise.all([
+		chrome.storage.local.set({ mode }),
+		chrome.action.setIcon({ path: icon[mode] }),
+		chrome.action.setTitle({ title: `${chrome.i18n.getMessage('name')} [${chrome.i18n.getMessage(title[mode])}]` })
+	])
+}
+
+let pendingOperation = Promise.resolve()
+
+const enqueue = operation => {
+	pendingOperation = pendingOperation
+		.then(operation, operation)
+		.catch(error => console.error('Failed to update extension state:', error))
+}
+
+chrome.action.onClicked.addListener(() => {
+	enqueue(async () => {
+		const mode = await getMode()
+		await sync((mode + 1) % title.length)
+	})
 })
 
-chrome.storage.local.get('mode', data => {
-	mode = data.mode == null ? 2 : data.mode
-	sync()
-})
+const restore = () => enqueue(async () => sync(await getMode()))
+
+chrome.runtime.onInstalled.addListener(restore)
+chrome.runtime.onStartup.addListener(restore)

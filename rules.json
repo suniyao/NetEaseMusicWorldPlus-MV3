@@ -1,0 +1,28 @@
+[
+	{
+		"id": 1,
+		"priority": 1,
+		"action": {
+			"type": "modifyHeaders",
+			"requestHeaders": [
+				{ "header": "X-Real-IP", "operation": "set", "value": "211.161.244.70" }
+			]
+		},
+		"condition": {
+			"urlFilter": "||music.163.com/"
+		}
+	},
+	{
+		"id": 2,
+		"priority": 1,
+		"action": {
+			"type": "modifyHeaders",
+			"requestHeaders": [
+				{ "header": "Cache-Control", "operation": "set", "value": "no-cache" }
+			]
+		},
+		"condition": {
+			"regexFilter": "^https?://m\\d+c\\.music\\.126\\.net/"
+		}
+	}
+]
